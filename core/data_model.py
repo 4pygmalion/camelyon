@@ -503,9 +503,9 @@ class WholeSlideImage:
 
             interval = patch_size * (level * 2)
             if verbose:
-                y_range = range(polygon_min_y, polygon_max_y, interval)
-            else:
                 y_range = tqdm.tqdm(range(polygon_min_y, polygon_max_y, interval))
+            else:
+                y_range = range(polygon_min_y, polygon_max_y, interval)
 
             for patch_min_y in y_range:
                 for patch_min_x in range(polygon_min_x, polygon_max_x, interval):
