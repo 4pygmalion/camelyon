@@ -424,6 +424,9 @@ class WholeSlideImage:
                     y = float(coordinate.get("Y"))
                     points.append((x, y))
 
+                if len(points) <= 4:
+                    continue
+
             polygons.append(Polygon(points))
 
         return polygons
