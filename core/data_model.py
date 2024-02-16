@@ -651,10 +651,10 @@ class CamelyonWSIs:
     def __getitem__(self, index) -> Patch:
         if isinstance(index, Iterable):
             if all([isinstance(i, numbers.Integral) for i in index]):
-                return Patches([self.data[i] for i in index])
+                return CamelyonWSIs([self.data[i] for i in index])
 
         elif isinstance(index, slice):
-            return Patches(self.data[index])
+            return CamelyonWSIs(self.data[index])
 
         elif isinstance(index, int):
             return self.data[index]
