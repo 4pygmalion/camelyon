@@ -54,6 +54,7 @@ def do_tile(whole_slide_image: WholeSlideImage, save_dir: str) -> None:
             polygons,
             label=Labels.MALIGNANT,
             patch_size=512,
+            level=1,
             patch_filter=patch_filter,
             save_dir=os.path.join(
                 save_dir, Labels.MALIGNANT.value, whole_slide_image.name
@@ -84,7 +85,6 @@ if __name__ == "__main__":
             )
 
         images.append(slide_image)
-    random.shuffle(images)
 
     rumc_slide_images = CamelyonWSIs(
         [
