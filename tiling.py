@@ -8,7 +8,6 @@ $ python tiling.py \
 
 import os
 import glob
-import random
 import argparse
 import multiprocessing
 from functools import partial
@@ -39,6 +38,7 @@ def do_tile(whole_slide_image: WholeSlideImage, save_dir: str) -> None:
 
     if whole_slide_image.label == Labels.BENIGN:
         patch_filter.add_hvs_foregorund_ratio()
+        patch_filter.add_by_optical_density()
         whole_slide_image.tile_without_annotation(
             patch_size=512,
             level=1,
