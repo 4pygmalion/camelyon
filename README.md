@@ -55,7 +55,7 @@ Patches(len=17, malignant(17), benign(0))
 ```
 
 ### Tile without annotation for Benign WSI
-```
+```python
 >>> from core.patch_filter import PatchFilter
 >>> patch_filter = PatchFilter()
 >>> patch_filter.add_hvs_foregorund_ratio()
@@ -71,7 +71,7 @@ Patches(len=17, malignant(17), benign(0))
 ```
 
 ### Tile without holding in memory
-```
+```python
 >>> from core.patch_filter import PatchFilter
 >>> patch_filter = PatchFilter()
 >>> patch_filter.add_hvs_foregorund_ratio()
@@ -89,7 +89,7 @@ Patches(len=17, malignant(17), benign(0))
 
 #### Save Patch
 Patch with CLI
-```/bin/bash
+```bash
 $ python3 tiling.py \
     -i .../Camelyon_Challenge \
     -o ./data
