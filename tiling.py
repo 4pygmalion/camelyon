@@ -1,7 +1,14 @@
-"""Tiling"""
+"""Tiling
+
+$ python tiling.py \
+    -i /home/heon/heon_vast/public_data/Camelyon_Challenge/CAMELYON16 \
+    -o ./data \
+    -n 48
+"""
 
 import os
 import glob
+import random
 import argparse
 import multiprocessing
 from functools import partial
@@ -16,7 +23,12 @@ def get_args():
     argparser.add_argument(
         "-i", "--input_dir", help="Camleyon16 datadir", required=True
     )
-    argparser.add_argument("-o", "--output_dir", help="Output directory", required=True)
+    argparser.add_argument(
+        "-o", "--output_dir", help="Output directory to save", required=True
+    )
+    argparser.add_argument(
+        "-n", "--n_jobs", help="Number of jobs", type=int, default=24
+    )
 
     return argparser.parse_args()
 
@@ -31,17 +43,21 @@ def do_tile(whole_slide_image: WholeSlideImage, save_dir: str) -> None:
             patch_size=512,
             level=1,
             patch_filter=patch_filter,
-            save_dir=os.path.join(save_dir, whole_slide_image.name),
+            save_dir=os.path.join(
+                save_dir, Labels.BENIGN.value, whole_slide_image.name
+            ),
         )
     else:
-        patch_filter.add_intersection_over_patch(polygons)
         polygons = whole_slide_image.get_polygons()
+        patch_filter.add_intersection_over_patch(polygons)
         whole_slide_image.tile_with_annotation(
             polygons,
             label=Labels.MALIGNANT,
             patch_size=512,
             patch_filter=patch_filter,
-            save_dir=os.path.join(save_dir, whole_slide_image.name),
+            save_dir=os.path.join(
+                save_dir, Labels.MALIGNANT.value, whole_slide_image.name
+            ),
         )
 
     return
@@ -55,18 +71,20 @@ if __name__ == "__main__":
     images = list()
     image_paths = glob.glob(os.path.join(INPUT_DIR, "images", "*.tif"))
     for image_path in tqdm.tqdm(image_paths):
-        if "normal" in image_path:
+        annotation_path = image_path.replace("images", "annotations").replace(
+            ".tif", ".xml"
+        )
+        if not os.path.exists(annotation_path):
             slide_image = WholeSlideImage(slide_path=image_path, label=Labels.BENIGN)
         else:
             slide_image = WholeSlideImage(
                 slide_path=image_path,
-                annotation_path=image_path.replace("images", "annotations").replace(
-                    ".tif", ".xml"
-                ),
+                annotation_path=annotation_path,
                 label=Labels.MALIGNANT,
             )
 
         images.append(slide_image)
+    random.shuffle(images)
 
     rumc_slide_images = CamelyonWSIs(
         [
@@ -77,7 +95,7 @@ if __name__ == "__main__":
     )
     os.makedirs("data/rumc", exist_ok=True)
     rumc_func = partial(do_tile, save_dir=os.path.join(OUTPUT_DIR, "rumc"))
-    with multiprocessing.Pool(20) as pool:
+    with multiprocessing.Pool(ARGS.n_jobs) as pool:
         pool.map(rumc_func, rumc_slide_images)
 
     umcu_slide_images = CamelyonWSIs(
@@ -89,5 +107,5 @@ if __name__ == "__main__":
     )
     os.makedirs("data/umcu", exist_ok=True)
     umcu_func = partial(do_tile, save_dir=os.path.join(OUTPUT_DIR, "umcu"))
-    with multiprocessing.Pool(20) as pool:
+    with multiprocessing.Pool(ARGS.n_jobs) as pool:
         pool.map(umcu_func, umcu_slide_images)
