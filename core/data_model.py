@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 import numbers
 from enum import Enum
-from typing import List, Union, Iterable
+from typing import List, Iterable, Tuple
 from dataclasses import dataclass
 
 import tqdm
@@ -12,12 +12,10 @@ import numpy as np
 import xml.etree.ElementTree as ET
 from PIL import Image, ImageDraw
 from shapely.geometry import Polygon
-from matplotlib import pyplot as plt
 
 
 class Centers(Enum):
-    """Centers
-
+    """Medical centers
     Reference:
         https://academic.oup.com/gigascience/article/7/6/giy065/5026175
 
@@ -27,194 +25,87 @@ class Centers(Enum):
     UMCU = "UMCU"
 
 
+@dataclass
+class Coordinates:
+    x_min: int = None
+    y_min: int = None
+    x_max: int = None
+    y_max: int = None
+
+    def __repr__(self) -> str:
+        return f"Coordinates(x_min={self.x_min}, y_min={self.y_min}, x_max={self.x_max}, y_max={self.y_max})"
+
+    def to_tuple(self) -> Tuple[Tuple[int, int]]:
+        return ((self.x_min, self.y_min), (self.x_max, self.y_max))
+
+    def to_polygon(self) -> Polygon:
+        data = [
+            (self.x_min, self.y_min),
+            (self.x_min, self.y_max),
+            (self.x_max, self.y_max),
+            (self.x_max, self.y_max),
+        ]
+        return Polygon(data)
+
+
 class Labels(Enum):
-    BENIGN = "benign"
-    MALIGNANT = "malignant"
-    UNKNOWN = "unknown"
+    benign = "benign"
+    malignant = "malignant"
+    unknown = "unknown"
 
 
 @dataclass
 class Patch:
     """패치의 데이터클레스
 
-    Args:
-        path (str): 패치의 경로
-        label (Labels): 패치의 라벨
-        name (str): 패치의 이름 (default: "unknown")
-
     Example:
-        // 파일로부터 패치생성
-        >>> patch = Patch(path="./image.png", label=Labels.BENIGN, name="image1")
-        >>> patch.image_array  # (N, N, 3)
+        # Array로부터 패치 생성
+        >>> image_array:np.ndarray = ....
+        >>> patch = Patch(image_array)
+        >>> patch
+        Patch(image_shape=(512, 512, 3), path=None, label=Labels.unknown, coordinates=None, level=None)
 
-        // 이미지 어레이러부터 패치생성
-        >>> image_array = np.array(Image.open("./image.png"))
-        >>> patch = Patch.from_array(array, label=Labels.BENIGN)
+        # 파일로부터 생성
+        >>> patch = Patch.from_file("test_path.png", label=Labels.unknown)
+        >>> patch
+        Patch(image_shape=(512, 512, 3), path=None, label=Labels.unknown, coordinates=None, level=None)
+        >>> patch.close() # 메모리 해제
 
-        // 주피터 노트북에 이미지 렌더링
-        >>> patch.plot()
+
+        # 좌표와 함께 생성
+        >>> patch = Patch(label=Labels.unknown, coordinates=Coordinates(100, 105, 200, 200))
+        >>> patch.coordinates.x_min
+        100
+        >>> patch.coordinates.y_min
+        105
+        >>> patch.coordinates.x_max
+        200
 
     """
 
+    image_array: np.ndarray = None
+    confidences: np.ndarray = None
+    coordinates: tuple = None
+    address: Tuple[int, int] = None
+    label: Labels = Labels.unknown
+
     path: str = None
-    label: Labels = None
-
-    name: str = "unknown"
     level: int = None
-    x_min: int = None
-    y_min: int = None
-    x_max: int = None
-    y_max: int = None
-    center: str = None
-
-    def __post_init__(self):
-        if self.path is not None:
-            self.name = os.path.basename(self.path)
-
-        return
-
-    def _read_image(self) -> np.ndarray:
-        return np.array(Image.open(self.path))
-
-    @property
-    def image_array(self):
-        if not hasattr(self, "_image_array"):
-            return self._read_image()
-
-        return self._image_array
-
-    @image_array.setter
-    def image_array(self, image_array):
-        self._image_array = image_array
-        return
+    center: Centers = None
 
     @classmethod
-    def from_file(cls, path: str, label: Labels = None, **kwargs) -> Patch:
-        """이미지 어레이러부터 패치생성
-
-        Args:
-            array (np.ndarray): 이미지 어레이 (N, N, 3)
-            label (Labels): 라벨
-
-        Returns:
-            Patch: 패치
-
-        Example:
-            >>> image_array = np.array(Image.open("./image.png"))
-            >>> patch = Patch.from_array(array, label=Labels.BENIGN)
-        """
-
-        patch = cls(label=label, **kwargs)
-        patch.image_array = np.array(Image.open(path))
-
-        return patch
-
-    @classmethod
-    def from_image_array(cls, image_array: np.ndarray, **kwargs) -> Patch:
-        """이미지 어레이러부터 패치생성
-
-        Args:
-            array (np.ndarray): 이미지 어레이 (N, N, 3)
-            label (Labels): 라벨
-
-        Returns:
-            Patch: 패치
-
-        Example:
-            >>> image_array = np.array(Image.open("./image.png"))
-            >>> patch = Patch.from_array(array, label=Labels.BENIGN)
-        """
-        patch = cls(**kwargs)
-        patch.image_array = image_array
-
-        return patch
-
-    @property
-    def polygon(self) -> Union[Polygon, None]:
-        if any([xy is None for xy in (self.x_min, self.x_max, self.y_min, self.y_max)]):
-            return None
-
-        return Polygon(
-            [
-                (self.x_min, self.y_min),
-                (self.x_max, self.y_min),
-                (self.x_max, self.y_max),
-                (self.x_min, self.y_max),
-            ]
-        )
+    def from_file(cls, path: str, **kwargs: dict) -> Patch:
+        image_array = np.array(Image.open(path))
+        return Patch(image_array, **kwargs)
 
     def __repr__(self) -> str:
-        x_min_ymin = str((self.x_min, self.y_min))
-        x_max_ymax = str((self.x_max, self.y_max))
-
-        return (
-            f"Patch(name={self.name}, label={self.label}, region={x_min_ymin, x_max_ymax}, "
-            f"level={self.level}), center={self.center}"
+        image_shape = (
+            "None" if self.image_array is None else str(self.image_array.shape)
         )
-
-    def plot(self, figsize: tuple = (5, 5)):
-        fig, axes = plt.subplots(figsize=figsize)
-        axes.imshow(
-            self.image_array,
-            origin="upper",
-            extent=[self.x_min, self.x_max, self.y_min, self.y_max],
-        )
-
-        return fig, axes
-
-    def plot_over_annotation(self, annotation: Polygon, figsize: tuple = (10, 10)):
-        xy = np.array(list(annotation.exterior.coords))
-        annotation_x_min, annotaiton_y_min = xy.min(axis=0)
-        annotation_x_max, annotation_y_max = xy.max(axis=0)
-
-        image_size = (
-            int(annotation_x_max - annotation_x_min),
-            int(annotation_y_max - annotaiton_y_min),
-        )
-        image = Image.new("RGBA", image_size, color="white")
-        foreground = Image.fromarray(self.image_array)
-        relative_x = int(self.x_min - annotation_x_min)
-        relative_y = int(self.y_min - annotaiton_y_min)
-        image.paste(
-            foreground.resize((self.x_max - self.x_min, self.y_max - self.y_min)),
-            (relative_x, relative_y),
-        )
-
-        # Annotation
-        draw = ImageDraw.Draw(image)
-        draw.polygon(
-            xy=[
-                (int(x - annotation_x_min), int(y - annotaiton_y_min))
-                for (x, y) in list(annotation.exterior.coords)
-            ],
-            outline="red",
-            width=int((image_size[0] + image_size[1]) / 2 * 0.002),
-        )
-
-        fig, axes = plt.subplots(figsize=figsize)
-        axes.imshow(
-            image,
-            origin="upper",
-            extent=[
-                annotation_x_min,
-                annotation_x_max,
-                annotation_y_max,
-                annotaiton_y_min,
-            ],
-        )
-
-        return fig, axes
-
-    def save(self, path: str) -> None:
-        """패치 이미지를 주어진 경로에 저장합니다."""
-        Image.fromarray(self.image_array).save(path)
-        return
+        return f"Patch(image_shape={image_shape}, path={self.path}, label={self.label}, coordinates={str(self.coordinates)}, level={self.address})"
 
     def close(self):
-        if not hasattr(self, "_image_array"):
-            return
-
-        del self._image_array
+        del self.image_array
 
         return
 
@@ -300,9 +191,9 @@ class Patches:
 
         labels = list()
         for patch in self.data:
-            if patch.label.value == Labels.BENIGN.value:
+            if patch.label.value == Labels.benign.value:
                 labels.append(0)
-            elif patch.label.value == Labels.MALIGNANT.value:
+            elif patch.label.value == Labels.malignant.value:
                 labels.append(1)
             else:
                 raise NotImplementedError
@@ -367,7 +258,7 @@ class Patches:
 class WholeSlideImage:
     slide_path: str
     annotation_path: str = str()
-    label: Labels = Labels.UNKNOWN
+    label: Labels = Labels.unknown
 
     def __post_init__(self) -> None:
         self.name = os.path.basename(self.slide_path).split(".")[0]
@@ -518,14 +409,13 @@ class WholeSlideImage:
 
                     patch_max_x = patch_min_x + interval
                     patch_max_y = patch_min_y + interval
-                    patch = Patch.from_image_array(
+                    patch = Patch(
                         image_array=np.array(patch.convert("RGB")),
+                        coordinates=Coordinates(
+                            patch_min_x, patch_min_y, patch_max_x, patch_max_y
+                        ),
                         label=label,
                         level=level,
-                        x_min=patch_min_x,
-                        x_max=patch_max_x,
-                        y_min=patch_min_y,
-                        y_max=patch_max_y,
                         center=self.center,
                     )
 
@@ -591,13 +481,13 @@ class WholeSlideImage:
                 )
                 patch_max_x = patch_min_x + interval
                 patch_max_y = patch_min_y + interval
-                patch = Patch.from_image_array(
+                patch = Patch(
                     image_array=np.array(patch.convert("RGB")),
+                    coordinates=Coordinates(
+                        patch_min_x, patch_min_y, patch_max_x, patch_max_y
+                    ),
+                    label=Labels.benign,
                     level=level,
-                    x_min=patch_min_x,
-                    x_max=patch_max_x,
-                    y_min=patch_min_y,
-                    y_max=patch_max_y,
                     center=self.center,
                 )
 
