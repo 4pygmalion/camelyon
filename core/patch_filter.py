@@ -54,7 +54,7 @@ class PatchFilter:
         """
 
         def intersection_over_patch(patch, polygon=polygon, buffer=buffer) -> bool:
-            patch_polygon: Polygon = patch.polygon
+            patch_polygon: Polygon = patch.coordinates.to_polygon()
             for annotation in polygon:
                 try:
                     overlap_area = patch_polygon.intersection(annotation).area
