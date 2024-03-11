@@ -84,6 +84,9 @@ if __name__ == "__main__":
         if not os.path.exists(annotation_path):
             LOGGER.info(f"slide_fname({slide_fname}) did have annotaion")
             continue
+        if not os.path.exists(slide_path):
+            LOGGER.info(f"slide_fname({slide_fname}) did not exist")
+            continue
 
         wsi = WholeSlideImage(
             slide_path, annotation_path, center=Centers(center_num), logger=LOGGER
