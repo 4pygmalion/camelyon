@@ -88,9 +88,9 @@ if __name__ == "__main__":
             LOGGER.info(f"slide_fname({slide_fname}) did have annotaion")
             continue
 
-        LOGGER.info(f"Do tiling({slide_fname})")
         wsi = WholeSlideImage(slide_path, annotation_path, center=Centers(center_num))
         output_center_dir = os.path.join(OUTPUT_DIR, Centers(center_num).name)
+        LOGGER.info(f"Do tiling({slide_fname}), Center:{Centers(center_num).name}")
 
         wsi.tile_with_full_res(
             patch_size=512,
