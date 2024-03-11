@@ -2,16 +2,20 @@ from __future__ import annotations
 
 import os
 import numbers
+
 from enum import Enum
 from typing import List, Iterable, Tuple
 from dataclasses import dataclass
+from multiprocessing import Process, JoinableQueue
 
 import tqdm
 import openslide
+
 import numpy as np
 import xml.etree.ElementTree as ET
 from PIL import Image, ImageDraw
 from shapely.geometry import Polygon
+from openslide.deepzoom import DeepZoomGenerator
 
 
 class Centers(Enum):
@@ -21,8 +25,11 @@ class Centers(Enum):
 
     """
 
-    RUMC = "RUMC"
-    UMCU = "UMCU"
+    RUMC = 0
+    CWZ = 1
+    UMCU = 2
+    RST = 3
+    LPON = 4
 
 
 @dataclass
@@ -37,6 +44,9 @@ class Coordinates:
 
     def to_tuple(self) -> Tuple[Tuple[int, int]]:
         return ((self.x_min, self.y_min), (self.x_max, self.y_max))
+
+    def to_string(self) -> str:
+        return f"{self.x_min}_{self.y_min}_{self.x_max}_{self.y_max}"
 
     def to_polygon(self) -> Polygon:
         data = [
@@ -254,32 +264,89 @@ class Patches:
         return
 
 
+class Worker(Process):
+    def __init__(
+        self, slide_name, queue, dz_generator, patch_size, patch_filter, save_dir
+    ):
+        Process.__init__(self)
+        self.slide_name = slide_name
+        self.queue = queue
+        self.patch_size = patch_size
+        self.dz_generator = dz_generator
+        self.patch_filter = patch_filter
+        self.save_dir = save_dir
+
+    def run(self):
+        """병렬처리의 메인 루틴"""
+
+        while True:
+            packed_data = self.queue.get()
+            if packed_data is None:
+                break
+
+            deepzoom_level, x_adr, y_adr, polygons = packed_data
+
+            patch: Image.Image = self.dz_generator.get_tile(
+                deepzoom_level, (x_adr, y_adr)
+            )
+            patch = patch.convert("RGB")
+            if self.patch_filter(np.asarray(patch)):
+                continue
+
+            location, level, size = self.dz_generator.get_tile_coordinates(
+                deepzoom_level, (x_adr, y_adr)
+            )
+
+            x_min, y_min = location
+            x_max, y_max = x_min + size[0], y_min + size[1]
+            cooridnates = Coordinates(x_min, y_min, x_max, y_max)
+            patch_polygon: Polygon = cooridnates.to_polygon()
+
+            is_overlap = False
+            for polygon in polygons:
+                if polygon.contains(patch_polygon):
+                    is_overlap = True
+                    break
+
+            resized_patch: Image.Image = patch.resize(
+                (self.patch_size, self.patch_size)
+            )
+            image_name = f"{self.slide_name}_{cooridnates.to_string()}.png"
+            output_path = (
+                os.path.join(
+                    self.save_dir,
+                    Labels.malignant.name,
+                    image_name,
+                )
+                if is_overlap
+                else os.path.join(self.save_dir, Labels.benign.name, image_name)
+            )
+            resized_patch.save(output_path)
+
+            # 큐에 넣은 작업이 완료됨을 알림
+            self.queue.task_done()
+
+        return
+
+
 @dataclass
 class WholeSlideImage:
     slide_path: str
     annotation_path: str = str()
     label: Labels = Labels.unknown
+    center: Centers = None
 
     def __post_init__(self) -> None:
         self.name = os.path.basename(self.slide_path).split(".")[0]
-        self.slide = openslide.OpenSlide(self.slide_path)
-        self.scanner = self.slide.properties.get("philips.DICOM_MANUFACTURER", str())
-        if self.scanner:
-            self.center = (
-                Centers.RUMC.value
-                if self.scanner.startswith("3D")
-                else Centers.UMCU.value
-            )
-        else:
-            self.center = str()
-
-        # TODO: ValueError: ctypes objects containing pointers cannot be pickled 해결필요
-        del self.slide
 
         return
 
     def __repr__(self) -> str:
-        return f"WholeSlideImage(name={self.name}, center={self.center})"
+        return (
+            f"WholeSlideImage(name={self.name}, "
+            f"annotation_path={self.annotation_path} "
+            f"center={self.center})"
+        )
 
     def get_polygons(self) -> List[Polygon]:
         """xml 파일로부터 polygon 정보를 가져옴
@@ -315,6 +382,7 @@ class WholeSlideImage:
                     y = float(coordinate.get("Y"))
                     points.append((x, y))
 
+                # 좌표가 4개 이하인 경우의 예외처리
                 if len(points) <= 4:
                     continue
 
@@ -351,7 +419,47 @@ class WholeSlideImage:
 
         return thumnail
 
-    def tile_with_annotation(
+    def tile_with_full_res(
+        self,
+        patch_size: int,
+        overlap: int,
+        save_dir: str,
+        n_worker: int = 16,
+        patch_filter=None,
+    ):
+        """Malignant slide내에서 benign/malignant patch을 추출"""
+
+        dz_generator = DeepZoomGenerator(
+            openslide.open_slide(self.slide_path),
+            tile_size=patch_size,
+            overlap=overlap,
+            limit_bounds=True,
+        )
+        n_level = dz_generator.level_count
+        deepzoom_level = n_level - 1
+        tile_x, tiles_y = dz_generator.level_tiles[n_level - 1]
+        polygons: List[Polygon] = self.get_polygons()
+
+        queue = JoinableQueue()
+        for _ in range(n_worker):
+            worker = Worker(
+                self.name, queue, dz_generator, patch_size, patch_filter, save_dir
+            )
+            worker.start()
+
+        for x_adr in range(tile_x):
+            for y_adr in range(tiles_y):
+                queue.put((deepzoom_level, x_adr, y_adr, polygons))
+
+        for _ in range(n_worker):
+            queue.put(None)
+
+        queue.join()
+        queue.close()
+
+        return
+
+    def tile_in_region(
         self,
         polygons: List[Polygon],
         label: Labels,
