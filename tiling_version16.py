@@ -36,7 +36,7 @@ def do_tile(whole_slide_image: WholeSlideImage, save_dir: str) -> None:
     """Do tile"""
     patch_filter = PatchFilter()
 
-    if whole_slide_image.label == Labels.BENIGN:
+    if whole_slide_image.label == Labels.benign:
         patch_filter.add_hvs_foregorund_ratio()
         patch_filter.add_by_optical_density()
         whole_slide_image.tile_without_annotation(
@@ -44,7 +44,7 @@ def do_tile(whole_slide_image: WholeSlideImage, save_dir: str) -> None:
             level=1,
             patch_filter=patch_filter,
             save_dir=os.path.join(
-                save_dir, Labels.BENIGN.value, whole_slide_image.name
+                save_dir, Labels.benign.value, whole_slide_image.name
             ),
         )
     else:
@@ -52,12 +52,12 @@ def do_tile(whole_slide_image: WholeSlideImage, save_dir: str) -> None:
         patch_filter.add_intersection_over_patch(polygons)
         whole_slide_image.tile_with_annotation(
             polygons,
-            label=Labels.MALIGNANT,
+            label=Labels.malignant,
             patch_size=512,
             level=1,
             patch_filter=patch_filter,
             save_dir=os.path.join(
-                save_dir, Labels.MALIGNANT.value, whole_slide_image.name
+                save_dir, Labels.malignant.value, whole_slide_image.name
             ),
         )
 
@@ -76,12 +76,12 @@ if __name__ == "__main__":
             ".tif", ".xml"
         )
         if not os.path.exists(annotation_path):
-            slide_image = WholeSlideImage(slide_path=image_path, label=Labels.BENIGN)
+            slide_image = WholeSlideImage(slide_path=image_path, label=Labels.benign)
         else:
             slide_image = WholeSlideImage(
                 slide_path=image_path,
                 annotation_path=annotation_path,
-                label=Labels.MALIGNANT,
+                label=Labels.malignant,
             )
 
         images.append(slide_image)
