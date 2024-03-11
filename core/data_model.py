@@ -382,6 +382,7 @@ class WholeSlideImage:
                     y = float(coordinate.get("Y"))
                     points.append((x, y))
 
+                # 좌표가 4개 이하인 경우의 예외처리
                 if len(points) <= 4:
                     continue
 
