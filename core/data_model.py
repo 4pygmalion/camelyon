@@ -1,18 +1,15 @@
 from __future__ import annotations
 
 import os
-import time
 import numbers
-import datetime
 from enum import Enum
+from logging import Logger
 from typing import List, Iterable, Tuple
 from dataclasses import dataclass
 from multiprocessing import Process, Queue
-from queue import Empty
 
 import tqdm
 import openslide
-
 import numpy as np
 import xml.etree.ElementTree as ET
 from PIL import Image, ImageDraw
@@ -275,6 +272,7 @@ class Worker(Process):
         patch_size,
         patch_filter,
         save_dir,
+        logger=None,
     ):
         Process.__init__(self)
         self.slide_name = slide_name
@@ -284,6 +282,7 @@ class Worker(Process):
         self.patch_filter = patch_filter
         self.save_dir = save_dir
         self.daemon = True  # 프로세스종료시 서브프로세스 종료
+        self.logger = logger
 
     def run(self):
         """병렬처리의 메인 루틴"""
@@ -294,6 +293,8 @@ class Worker(Process):
                 break
 
             deepzoom_level, x_adr, y_adr, polygons = packed_data
+            if self.logger:
+                self.logger.debug(f"Address ({x_adr}, {y_adr}) processed")
 
             patch: Image.Image = self.dz_generator.get_tile(
                 deepzoom_level, (x_adr, y_adr)
@@ -341,6 +342,7 @@ class WholeSlideImage:
     annotation_path: str = str()
     label: Labels = Labels.unknown
     center: Centers = None
+    logger: Logger = None
 
     def __post_init__(self) -> None:
         self.name = os.path.basename(self.slide_path).split(".")[0]
@@ -450,7 +452,13 @@ class WholeSlideImage:
         workers = list()
         for _ in range(n_worker):
             worker = Worker(
-                self.name, queue, dz_generator, patch_size, patch_filter, save_dir
+                self.name,
+                queue,
+                dz_generator,
+                patch_size,
+                patch_filter,
+                save_dir,
+                logger=self.logger,
             )
             worker.start()
             workers.append(worker)
