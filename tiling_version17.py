@@ -25,14 +25,11 @@ $ tree -L [output_path]
 """
 
 import os
-import glob
 import argparse
-import multiprocessing
-from functools import partial
 
 import tqdm
 import pandas as pd
-from core.data_model import WholeSlideImage, CamelyonWSIs, Centers, Labels
+from core.data_model import WholeSlideImage, Centers, Labels
 from core.patch_filter import PatchFilter
 from utils import get_logger
 
@@ -88,9 +85,11 @@ if __name__ == "__main__":
             LOGGER.info(f"slide_fname({slide_fname}) did have annotaion")
             continue
 
-        LOGGER.info(f"Do tiling({slide_fname})")
-        wsi = WholeSlideImage(slide_path, annotation_path, center=Centers(center_num))
+        wsi = WholeSlideImage(
+            slide_path, annotation_path, center=Centers(center_num), logger=LOGGER
+        )
         output_center_dir = os.path.join(OUTPUT_DIR, Centers(center_num).name)
+        LOGGER.info(f"Do tiling({slide_fname}), Center:{Centers(center_num).name}")
 
         wsi.tile_with_full_res(
             patch_size=512,

@@ -2,15 +2,14 @@ from __future__ import annotations
 
 import os
 import numbers
-
 from enum import Enum
+from logging import Logger
 from typing import List, Iterable, Tuple
 from dataclasses import dataclass
-from multiprocessing import Process, JoinableQueue
+from multiprocessing import Process, Queue
 
 import tqdm
 import openslide
-
 import numpy as np
 import xml.etree.ElementTree as ET
 from PIL import Image, ImageDraw
@@ -266,7 +265,14 @@ class Patches:
 
 class Worker(Process):
     def __init__(
-        self, slide_name, queue, dz_generator, patch_size, patch_filter, save_dir
+        self,
+        slide_name,
+        queue,
+        dz_generator: DeepZoomGenerator,
+        patch_size,
+        patch_filter,
+        save_dir,
+        logger=None,
     ):
         Process.__init__(self)
         self.slide_name = slide_name
@@ -275,6 +281,8 @@ class Worker(Process):
         self.dz_generator = dz_generator
         self.patch_filter = patch_filter
         self.save_dir = save_dir
+        self.daemon = True  # 프로세스종료시 서브프로세스 종료
+        self.logger = logger
 
     def run(self):
         """병렬처리의 메인 루틴"""
@@ -285,6 +293,8 @@ class Worker(Process):
                 break
 
             deepzoom_level, x_adr, y_adr, polygons = packed_data
+            if self.logger:
+                self.logger.debug(f"Address ({x_adr}, {y_adr}) processed")
 
             patch: Image.Image = self.dz_generator.get_tile(
                 deepzoom_level, (x_adr, y_adr)
@@ -304,7 +314,7 @@ class Worker(Process):
 
             is_overlap = False
             for polygon in polygons:
-                if polygon.contains(patch_polygon):
+                if polygon.intersects(patch_polygon):
                     is_overlap = True
                     break
 
@@ -323,9 +333,6 @@ class Worker(Process):
             )
             resized_patch.save(output_path)
 
-            # 큐에 넣은 작업이 완료됨을 알림
-            self.queue.task_done()
-
         return
 
 
@@ -335,6 +342,7 @@ class WholeSlideImage:
     annotation_path: str = str()
     label: Labels = Labels.unknown
     center: Centers = None
+    logger: Logger = None
 
     def __post_init__(self) -> None:
         self.name = os.path.basename(self.slide_path).split(".")[0]
@@ -437,25 +445,33 @@ class WholeSlideImage:
         )
         n_level = dz_generator.level_count
         deepzoom_level = n_level - 1
-        tile_x, tiles_y = dz_generator.level_tiles[n_level - 1]
+        tiles_x, tiles_y = dz_generator.level_tiles[deepzoom_level]
         polygons: List[Polygon] = self.get_polygons()
 
-        queue = JoinableQueue()
+        queue = Queue()
+        workers = list()
         for _ in range(n_worker):
             worker = Worker(
-                self.name, queue, dz_generator, patch_size, patch_filter, save_dir
+                self.name,
+                queue,
+                dz_generator,
+                patch_size,
+                patch_filter,
+                save_dir,
+                logger=self.logger,
             )
             worker.start()
+            workers.append(worker)
 
-        for x_adr in range(tile_x):
+        for x_adr in range(tiles_x):
             for y_adr in range(tiles_y):
                 queue.put((deepzoom_level, x_adr, y_adr, polygons))
 
         for _ in range(n_worker):
             queue.put(None)
 
-        queue.join()
-        queue.close()
+        for worker in workers:
+            worker.join()
 
         return
 
