@@ -1,4 +1,0 @@
-gdown
-h5py
-openslide-python
-matplotlib
