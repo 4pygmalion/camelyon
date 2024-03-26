@@ -10,7 +10,7 @@ import torch
 from progress.bar import Bar
 from sklearn.metrics import roc_auc_score
 
-from .metics import AverageMeter, MetricsMeter
+from .metrics import AverageMeter, MetricsMeter
 
 
 class BaseTrainer(ABC):
