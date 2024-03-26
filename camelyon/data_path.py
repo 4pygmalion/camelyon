@@ -43,6 +43,15 @@ class CenterData:
 
     @property
     def data(self) -> Tuple[list, np.ndarray]:
+        """Access tuple of (x, y)
+
+        Returns:
+            Tuple[list, np.ndarray]: list of image_paths, label array
+
+        Examples:
+            >>> center_data = CenterData("...path")
+            >>> center_data.data
+        """
         malignant_paths, malignant_labels = self.malignant
         benign_paths, benign_labels = self.benign
 
