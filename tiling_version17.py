@@ -2,7 +2,7 @@
 
 $ python tiling_version17.py \
     -i /home/heon/heon_vast/public_data/Camelyon_Challenge/CAMELYON17 \
-    -o /home/heon/heon_vast/camelyon17_patches \
+    -o /home/heon/heon_vast/camelyon17_256 \
     -n 24
 
 $ tree -L [output_path]    
@@ -29,8 +29,8 @@ import argparse
 
 import tqdm
 import pandas as pd
-from core.data_model import WholeSlideImage, Centers, Labels
-from core.patch_filter import PatchFilter
+from camelyon.data_model import WholeSlideImage, Centers, Labels
+from camelyon.patch_filter import PatchFilter
 from utils import get_logger
 
 
@@ -95,7 +95,7 @@ if __name__ == "__main__":
         LOGGER.info(f"Do tiling({slide_fname}), Center:{Centers(center_num).name}")
 
         wsi.tile_with_full_res(
-            patch_size=512,
+            patch_size=256,
             overlap=0,
             patch_filter=patch_filter,
             save_dir=output_center_dir,
